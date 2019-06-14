@@ -123,6 +123,7 @@ class Fetcher(object):
         zeroed_lt_versions = [lt.get("LaunchTemplateVersion", "")
                         for lt in zeroed_lts]
 
+        zeroed_lt_names = list(filter(None, zeroed_lt_names))
         resp = self.ec2.describe_launch_templates(
             LaunchTemplateNames=zeroed_lt_names
         )
