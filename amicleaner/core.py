@@ -116,8 +116,12 @@ class AMICleaner(object):
 
         amis = amis or []
         for ami in amis:
-            self.ec2.deregister_image(ImageId=ami.id)
-            print("{0} deregistered".format(ami.id))
+            try:
+                self.ec2.deregister_image(ImageId=ami.id)
+                print("{0} deregistered".format(ami.id))
+            except ClientError as e:
+                if "InvalidAMIID.Unavailable" not in str(e):
+                    raise e
             for block_device in ami.block_device_mappings:
                 if block_device.snapshot_id is not None:
                     try:
