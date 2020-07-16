@@ -33,55 +33,50 @@ class Fetcher(object):
 
         return available_amis
 
-    def fetch_unattached_lc(self):
+    def fetch_attached_lc(self):
 
         """
-        Find AMIs for launch configurations unattached
+        Find AMIs for launch configurations attached
         to autoscaling groups
         """
 
         resp = self.asg.describe_auto_scaling_groups()
-        used_lc = (asg.get("LaunchConfigurationName", "")
-                   for asg in resp.get("AutoScalingGroups", []))
-
-        resp = self.asg.describe_launch_configurations()
-        all_lcs = (lc.get("LaunchConfigurationName", "")
-                   for lc in resp.get("LaunchConfigurations", []))
-
-        unused_lcs = list(set(all_lcs) - set(used_lc))
+        used_lc = [lc for asg in resp.get("AutoScalingGroups", []) 
+                      for lc in [asg.get("LaunchConfigurationName", "")] if len(lc) > 0]
 
         resp = self.asg.describe_launch_configurations(
-            LaunchConfigurationNames=unused_lcs
+            LaunchConfigurationNames=used_lc
         )
         amis = [lc.get("ImageId")
                 for lc in resp.get("LaunchConfigurations", [])]
 
         return amis
 
-    def fetch_unattached_lt(self):
+    def fetch_attached_lt(self):
 
         """
-        Find AMIs for launch templates unattached
+        Find AMIs for launch templates attached
         to autoscaling groups
         """
 
         resp = self.asg.describe_auto_scaling_groups()
-        used_lt = (asg.get("LaunchTemplate", {}).get("LaunchTemplateName")
-                   for asg in resp.get("AutoScalingGroups", []))
 
-        resp = self.ec2.describe_launch_templates()
-        all_lts = (lt.get("LaunchTemplateName", "")
-                   for lt in resp.get("LaunchTemplates", []))
-
-        unused_lts = list(set(all_lts) - set(used_lt))
+        used_lt = [lt for asg in resp.get("AutoScalingGroups", []) 
+                      for lt in [asg.get("LaunchTemplate", {}).get("LaunchTemplateName", ""), 
+                                 asg.get("MixedInstancesPolicy", {}).get("LaunchTemplate", {}).get("LaunchTemplateSpecification", {}).get("LaunchTemplateName", "")]
+                      if len(lt) > 0]
 
         amis = []
-        for lt_name in unused_lts:
+        for lt_name in used_lt:
             resp = self.ec2.describe_launch_template_versions(
                 LaunchTemplateName=lt_name
             )
-            amis.append(lt_latest_version.get("LaunchTemplateData", {}).get("ImageId")
-                        for lt_latest_version in resp.get("LaunchTemplateVersions", []))
+            all_lt_versions = sorted(resp.get("LaunchTemplateVersions", []), key=lambda lt: lt.get("VersionNumber", -1))
+            lt_latest_version = all_lt_versions[-1]
+            lt_default_version = [lt for lt in all_lt_versions if lt.get("DefaultVersion", False) == True][0]
+
+            amis.append(lt_latest_version.get("LaunchTemplateData", {}).get("ImageId"))
+            amis.append(lt_default_version.get("LaunchTemplateData", {}).get("ImageId"))
 
         return amis
 
@@ -134,7 +129,7 @@ class Fetcher(object):
                 LaunchTemplateName=lt_name
                 # Cannot be empty... Versions=[lt_version] - unsure how to pass param only if present in Python 
             )
-            amis.append(lt_latest_version.get("LaunchTemplateData", {}).get("ImageId")
+            amis += (lt_latest_version.get("LaunchTemplateData", {}).get("ImageId")
                         for lt_latest_version in resp.get("LaunchTemplateVersions", []))
 
         return amis
